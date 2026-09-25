@@ -25,6 +25,7 @@
       padding: 20px 15px 80px 15px;
       max-width: 500px;
       margin: 0 auto;
+      overflow-x: hidden;
     }
 
     h1 {
@@ -79,6 +80,7 @@
       display: flex;
       flex-direction: column;
       gap: 12px;
+      position: relative;
     }
 
     /* 导航卡片 */
@@ -90,22 +92,28 @@
       align-items: center;
       justify-content: space-between;
       box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-      touch-action: pan-y;
-      transition: transform 0.15s, box-shadow 0.15s;
-      user-select: none;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      position: relative;
+      background-clip: padding-box;
     }
 
+    /* 被拖拽状态 */
     .card.dragging {
-      opacity: 0.5;
-      background: #eef5ff;
-      border: 2px dashed #4A90E2;
+      opacity: 0.9;
+      z-index: 1000;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+      transform: scale(1.02);
+      transition: none; /* 拖拽时取消动画保证跟手 */
     }
 
     .drag-handle {
-      font-size: 1.2rem;
+      font-size: 1.4rem;
       color: #aaa;
       cursor: grab;
-      padding-right: 12px;
+      padding: 10px 15px 10px 5px;
+      touch-action: none; /* 阻止手机浏览器页面滑动干扰 */
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     .info {
@@ -195,7 +203,6 @@
       locations.forEach((item, index) => {
         const card = document.createElement('div');
         card.className = 'card';
-        card.draggable = true;
         card.dataset.index = index;
 
         card.innerHTML = `
@@ -210,8 +217,8 @@
           </div>
         `;
 
-        // 绑定拖拽事件
-        addDragEvents(card);
+        // 绑定拖拽事件（同时支持触屏与鼠标）
+        setupTouchAndDrag(card);
 
         listContainer.appendChild(card);
       });
@@ -252,7 +259,6 @@
     }
 
     function openGoogleMap(encodedAddress) {
-      // 唤起 Google Maps 导航模式
       const mapUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`;
       window.open(mapUrl, '_blank');
     }
@@ -263,34 +269,81 @@
       });
     }
 
-    // --- 拖拽排序逻辑 ---
-    let draggedIndex = null;
+    // --- 兼容手机端 Touch 事件的拖拽排序逻辑 ---
+    function setupTouchAndDrag(card) {
+      const handle = card.querySelector('.drag-handle');
+      let startY = 0;
+      let currentY = 0;
+      let initialTop = 0;
+      let activeCard = null;
 
-    function addDragEvents(card) {
-      card.addEventListener('dragstart', (e) => {
-        draggedIndex = +card.dataset.index;
-        card.classList.add('dragging');
-      });
+      const onTouchStart = (e) => {
+        activeCard = card;
+        const touch = e.touches ? e.touches[0] : e;
+        startY = touch.clientY;
+        
+        const rect = activeCard.getBoundingClientRect();
+        initialTop = rect.top;
 
-      card.addEventListener('dragend', () => {
-        card.classList.remove('dragging');
-      });
+        activeCard.classList.add('dragging');
 
-      card.addEventListener('dragover', (e) => {
-        e.preventDefault();
-      });
+        document.addEventListener('touchmove', onTouchMove, { passive: false });
+        document.addEventListener('touchend', onTouchEnd);
+        document.addEventListener('mousemove', onTouchMove);
+        document.addEventListener('mouseup', onTouchEnd);
+      };
 
-      card.addEventListener('drop', (e) => {
-        e.preventDefault();
-        const targetIndex = +card.dataset.index;
-        if (draggedIndex !== null && draggedIndex !== targetIndex) {
-          // 交换位置
-          const movedItem = locations.splice(draggedIndex, 1)[0];
-          locations.splice(targetIndex, 0, movedItem);
-          saveToStorage();
-          renderList();
+      const onTouchMove = (e) => {
+        if (!activeCard) return;
+        if (e.cancelable) e.preventDefault(); // 阻止手机端整页滚动
+
+        const touch = e.touches ? e.touches[0] : e;
+        currentY = touch.clientY;
+        const deltaY = currentY - startY;
+
+        activeCard.style.transform = `translateY(${deltaY}px) scale(1.02)`;
+
+        // 获取当前拖拽到的目标位置
+        const cards = [...listContainer.querySelectorAll('.card:not(.dragging)')];
+        const nextCard = cards.find(c => {
+          const box = c.getBoundingClientRect();
+          return currentY < box.top + box.height / 2;
+        });
+
+        if (nextCard) {
+          listContainer.insertBefore(activeCard, nextCard);
+        } else {
+          listContainer.appendChild(activeCard);
         }
-      });
+      };
+
+      const onTouchEnd = () => {
+        if (!activeCard) return;
+
+        activeCard.style.transform = '';
+        activeCard.classList.remove('dragging');
+
+        // 更新数组位置并保存
+        const newCards = [...listContainer.querySelectorAll('.card')];
+        const newLocations = [];
+        newCards.forEach((c) => {
+          const oldIndex = parseInt(c.dataset.index, 10);
+          newLocations.push(locations[oldIndex]);
+        });
+
+        locations = newLocations;
+        saveToStorage();
+        renderList();
+
+        document.removeEventListener('touchmove', onTouchMove);
+        document.removeEventListener('touchend', onTouchEnd);
+        document.removeEventListener('mousemove', onTouchMove);
+        document.removeEventListener('mouseup', onTouchEnd);
+        activeCard = null;
+      };
+
+      handle.addEventListener('touchstart', onTouchStart, { passive: false });
+      handle.addEventListener('mousedown', onTouchStart);
     }
 
     // 注册 Service Worker
@@ -307,3 +360,4 @@
   </script>
 </body>
 </html>
+
