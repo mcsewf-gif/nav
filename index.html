@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>快捷导航</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#4A90E2">
+  <!-- iOS PWA 支持 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="快捷导航">
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: #f4f6f9;
+      color: #333;
+      padding: 20px 15px 80px 15px;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+      text-align: center;
+      color: #2c3e50;
+    }
+
+    /* 添加表单 */
+    .add-form {
+      background: white;
+      padding: 15px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .add-form input {
+      padding: 12px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 1rem;
+      outline: none;
+    }
+
+    .add-form input:focus {
+      border-color: #4A90E2;
+    }
+
+    .add-form button {
+      padding: 12px;
+      background-color: #4A90E2;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .add-form button:active {
+      background-color: #357ABD;
+    }
+
+    /* 列表容器 */
+    #address-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* 导航卡片 */
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      touch-action: pan-y;
+      transition: transform 0.15s, box-shadow 0.15s;
+      user-select: none;
+    }
+
+    .card.dragging {
+      opacity: 0.5;
+      background: #eef5ff;
+      border: 2px dashed #4A90E2;
+    }
+
+    .drag-handle {
+      font-size: 1.2rem;
+      color: #aaa;
+      cursor: grab;
+      padding-right: 12px;
+    }
+
+    .info {
+      flex: 1;
+      margin-right: 10px;
+      cursor: pointer;
+    }
+
+    .info .title {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: #1a1a1a;
+      margin-bottom: 4px;
+    }
+
+    .info .address {
+      font-size: 0.85rem;
+      color: #666;
+      word-break: break-all;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn-nav {
+      background-color: #34C759;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .btn-delete {
+      background: none;
+      border: none;
+      color: #FF3B30;
+      font-size: 1.2rem;
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+
+    .empty-tip {
+      text-align: center;
+      color: #999;
+      margin-top: 40px;
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>📍 快捷导航</h1>
+
+  <div class="add-form">
+    <input type="text" id="nameInput" placeholder="地址名称 (例: 公司 / 健身房)">
+    <input type="text" id="addressInput" placeholder="详细地址或 Google Map 搜索词">
+    <button onclick="addAddress()">添加导航按钮</button>
+  </div>
+
+  <div id="address-list"></div>
+
+  <script>
+    let locations = JSON.parse(localStorage.getItem('pwa_nav_locations')) || [
+      { id: '1', name: '示例地址', address: 'CN Tower, Toronto' }
+    ];
+
+    const listContainer = document.getElementById('address-list');
+
+    function saveToStorage() {
+      localStorage.setItem('pwa_nav_locations', JSON.stringify(locations));
+    }
+
+    function renderList() {
+      listContainer.innerHTML = '';
+
+      if (locations.length === 0) {
+        listContainer.innerHTML = '<div class="empty-tip">暂无保存的地址，请在上方添加</div>';
+        return;
+      }
+
+      locations.forEach((item, index) => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.draggable = true;
+        card.dataset.index = index;
+
+        card.innerHTML = `
+          <div class="drag-handle">☰</div>
+          <div class="info" onclick="openGoogleMap('${encodeURIComponent(item.address)}')">
+            <div class="title">${escapeHtml(item.name)}</div>
+            <div class="address">${escapeHtml(item.address)}</div>
+          </div>
+          <div class="actions">
+            <button class="btn-nav" onclick="openGoogleMap('${encodeURIComponent(item.address)}')">导航</button>
+            <button class="btn-delete" onclick="deleteAddress('${item.id}', event)">✕</button>
+          </div>
+        `;
+
+        // 绑定拖拽事件
+        addDragEvents(card);
+
+        listContainer.appendChild(card);
+      });
+    }
+
+    function addAddress() {
+      const nameInput = document.getElementById('nameInput');
+      const addressInput = document.getElementById('addressInput');
+
+      const name = nameInput.value.trim();
+      const address = addressInput.value.trim();
+
+      if (!name || !address) {
+        alert('请完整填写名称和地址！');
+        return;
+      }
+
+      locations.push({
+        id: Date.now().toString(),
+        name,
+        address
+      });
+
+      saveToStorage();
+      renderList();
+
+      nameInput.value = '';
+      addressInput.value = '';
+    }
+
+    function deleteAddress(id, event) {
+      event.stopPropagation();
+      if (confirm('确定要删除这个地址吗？')) {
+        locations = locations.filter(item => item.id !== id);
+        saveToStorage();
+        renderList();
+      }
+    }
+
+    function openGoogleMap(encodedAddress) {
+      // 唤起 Google Maps 导航模式
+      const mapUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`;
+      window.open(mapUrl, '_blank');
+    }
+
+    function escapeHtml(text) {
+      return text.replace(/[&<>"']/g, function(m) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+      });
+    }
+
+    // --- 拖拽排序逻辑 ---
+    let draggedIndex = null;
+
+    function addDragEvents(card) {
+      card.addEventListener('dragstart', (e) => {
+        draggedIndex = +card.dataset.index;
+        card.classList.add('dragging');
+      });
+
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+      });
+
+      card.addEventListener('dragover', (e) => {
+        e.preventDefault();
+      });
+
+      card.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const targetIndex = +card.dataset.index;
+        if (draggedIndex !== null && draggedIndex !== targetIndex) {
+          // 交换位置
+          const movedItem = locations.splice(draggedIndex, 1)[0];
+          locations.splice(targetIndex, 0, movedItem);
+          saveToStorage();
+          renderList();
+        }
+      });
+    }
+
+    // 注册 Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then(() => console.log('SW Registered'))
+          .catch(err => console.log('SW Register Failed: ', err));
+      });
+    }
+
+    // 初始渲染
+    renderList();
+  </script>
+</body>
+</html>
