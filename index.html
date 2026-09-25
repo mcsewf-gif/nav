@@ -30,21 +30,58 @@
 
     h1 {
       font-size: 1.5rem;
-      margin-bottom: 20px;
+      margin-bottom: 15px;
       text-align: center;
       color: #2c3e50;
+    }
+
+    /* Tab 切换栏样式 */
+    .tab-nav {
+      display: flex;
+      background: #e2e8f0;
+      border-radius: 10px;
+      padding: 4px;
+      margin-bottom: 20px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 10px 0;
+      text-align: center;
+      border: none;
+      background: transparent;
+      font-size: 1rem;
+      font-weight: bold;
+      color: #64748b;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn.active {
+      background: white;
+      color: #4A90E2;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    }
+
+    /* Tab 内容区域 */
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
     }
 
     /* 添加表单 */
     .add-form {
       background: white;
-      padding: 15px;
+      padding: 20px 15px;
       border-radius: 12px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-      margin-bottom: 20px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 12px;
     }
 
     .add-form input {
@@ -69,6 +106,7 @@
       font-weight: bold;
       cursor: pointer;
       transition: background 0.2s;
+      margin-top: 5px;
     }
 
     .add-form button:active {
@@ -103,7 +141,7 @@
       z-index: 1000;
       box-shadow: 0 10px 20px rgba(0,0,0,0.2);
       transform: scale(1.02);
-      transition: none; /* 拖拽时取消动画保证跟手 */
+      transition: none;
     }
 
     .drag-handle {
@@ -111,7 +149,7 @@
       color: #aaa;
       cursor: grab;
       padding: 10px 15px 10px 5px;
-      touch-action: none; /* 阻止手机浏览器页面滑动干扰 */
+      touch-action: none;
       user-select: none;
       -webkit-user-select: none;
     }
@@ -173,20 +211,47 @@
 
   <h1>📍 快捷导航</h1>
 
-  <div class="add-form">
-    <input type="text" id="nameInput" placeholder="地址名称 (例: 公司 / 健身房)">
-    <input type="text" id="addressInput" placeholder="详细地址或 Google Map 搜索词">
-    <button onclick="addAddress()">添加导航按钮</button>
+  <!-- Tab 导航按键 -->
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('list-tab')">地址</button>
+    <button class="tab-btn" onclick="switchTab('add-tab')">添加新地址</button>
   </div>
 
-  <div id="address-list"></div>
+  <!-- Tab 1: 地址列表 -->
+  <div id="list-tab" class="tab-content active">
+    <div id="address-list"></div>
+  </div>
+
+  <!-- Tab 2: 添加新地址 -->
+  <div id="add-tab" class="tab-content">
+    <div class="add-form">
+      <input type="text" id="nameInput" placeholder="地址名称 (例: 公司 / 健身房)">
+      <input type="text" id="addressInput" placeholder="详细地址或 Google Map 搜索词">
+      <button onclick="addAddress()">添加导航按钮</button>
+    </div>
+  </div>
 
   <script>
     let locations = JSON.parse(localStorage.getItem('pwa_nav_locations')) || [
-      { id: '1', name: '示例地址', address: 'CN Tower, Toronto' }
+      { id: '1', name: '大统华 Aurora', address: '16005 Bayview Ave, Aurora, ON L4G 3L4' },
+      { id: '2', name: '示例地址', address: 'CN Tower, Toronto' }
     ];
 
     const listContainer = document.getElementById('address-list');
+
+    // Tab 切换逻辑
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+      if (tabId === 'list-tab') {
+        document.querySelectorAll('.tab-btn')[0].classList.add('active');
+        document.getElementById('list-tab').classList.add('active');
+      } else {
+        document.querySelectorAll('.tab-btn')[1].classList.add('active');
+        document.getElementById('add-tab').classList.add('active');
+      }
+    }
 
     function saveToStorage() {
       localStorage.setItem('pwa_nav_locations', JSON.stringify(locations));
@@ -196,7 +261,7 @@
       listContainer.innerHTML = '';
 
       if (locations.length === 0) {
-        listContainer.innerHTML = '<div class="empty-tip">暂无保存的地址，请在上方添加</div>';
+        listContainer.innerHTML = '<div class="empty-tip">暂无保存的地址，请在“添加新地址”中添加</div>';
         return;
       }
 
@@ -217,7 +282,7 @@
           </div>
         `;
 
-        // 绑定拖拽事件（同时支持触屏与鼠标）
+        // 绑定拖拽事件
         setupTouchAndDrag(card);
 
         listContainer.appendChild(card);
@@ -247,6 +312,9 @@
 
       nameInput.value = '';
       addressInput.value = '';
+
+      // 添加完成后自动切换回地址列表 Tab
+      switchTab('list-tab');
     }
 
     function deleteAddress(id, event) {
@@ -269,21 +337,17 @@
       });
     }
 
-    // --- 兼容手机端 Touch 事件的拖拽排序逻辑 ---
+    // --- Touch 拖拽排序逻辑 ---
     function setupTouchAndDrag(card) {
       const handle = card.querySelector('.drag-handle');
       let startY = 0;
       let currentY = 0;
-      let initialTop = 0;
       let activeCard = null;
 
       const onTouchStart = (e) => {
         activeCard = card;
         const touch = e.touches ? e.touches[0] : e;
         startY = touch.clientY;
-        
-        const rect = activeCard.getBoundingClientRect();
-        initialTop = rect.top;
 
         activeCard.classList.add('dragging');
 
@@ -295,7 +359,7 @@
 
       const onTouchMove = (e) => {
         if (!activeCard) return;
-        if (e.cancelable) e.preventDefault(); // 阻止手机端整页滚动
+        if (e.cancelable) e.preventDefault();
 
         const touch = e.touches ? e.touches[0] : e;
         currentY = touch.clientY;
@@ -303,7 +367,6 @@
 
         activeCard.style.transform = `translateY(${deltaY}px) scale(1.02)`;
 
-        // 获取当前拖拽到的目标位置
         const cards = [...listContainer.querySelectorAll('.card:not(.dragging)')];
         const nextCard = cards.find(c => {
           const box = c.getBoundingClientRect();
@@ -323,7 +386,6 @@
         activeCard.style.transform = '';
         activeCard.classList.remove('dragging');
 
-        // 更新数组位置并保存
         const newCards = [...listContainer.querySelectorAll('.card')];
         const newLocations = [];
         newCards.forEach((c) => {
